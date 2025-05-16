@@ -1,0 +1,7 @@
+{
+  "ApiConfig": {
+    "baseUrl": "https://gorest.co.in/public/v2/",
+    "Endpoint": "users",
+    "authToken": "7b4127fc405869b43de152f82a27b388046adac7d5c0727b6b8bbeeb15ccd4b6"
+  }
+}
