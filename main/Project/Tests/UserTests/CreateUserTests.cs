@@ -7,17 +7,19 @@ namespace FinalProject.Tests.UserTests
 {
     public class CreateUserTests : TestBase
     {
+        // Valid user creation scenarios
+
         [Test]
         public async Task CreateUser_ShouldReturnCreatedStatusAndUser()
         {
-            // Arrange
+            // Arrange: generate a valid user
             var newUser = TestDataGenerator.GenerateUser();
 
-            // Act
+            // Act: send create user request
             var response = await UserService.CreateUserAsync(newUser);
             var responseContent = await response.Content.ReadAsStringAsync();
 
-            // Assert
+            // Assert: response is Created and user data matches
             response.StatusCode.Should().Be(HttpStatusCode.Created);
             responseContent.Should().NotBeNullOrEmpty();
 
@@ -31,25 +33,41 @@ namespace FinalProject.Tests.UserTests
         }
 
         [Test]
+        public async Task CreateUser_WithMaxLengthName_ShouldReturnCreated()
+        {
+            // Arrange: generate user with max allowed name length (100)
+            var user = TestDataGenerator.GenerateUser();
+            user.Name = new string('A', 100);
+
+            // Act: create user
+            var response = await UserService.CreateUserAsync(user);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            // Assert: should create successfully and name matches
+            response.StatusCode.Should().Be(HttpStatusCode.Created);
+            var createdUser = JsonSerializer.Deserialize<UserResponse>(responseContent);
+            createdUser!.Name.Should().Be(user.Name);
+        }
+
+        [Test]
         public async Task CreateUserWithExistingEmail_ShouldReturnUnprocessableEntity()
         {
-            // Arrange - Create a user first
+            // Arrange: create a user first
             var user1 = TestDataGenerator.GenerateUser();
             var createResponse1 = await UserService.CreateUserAsync(user1);
             createResponse1.StatusCode.Should().Be(HttpStatusCode.Created);
-
             var createdUser1 = JsonSerializer.Deserialize<UserResponse>(
                 await createResponse1.Content.ReadAsStringAsync());
 
-            // Create another user with the same email
+            // Arrange: prepare second user with same email
             var user2 = TestDataGenerator.GenerateUser();
             user2.Email = user1.Email;
 
-            // Act
+            // Act: try to create second user with duplicate email
             var response = await UserService.CreateUserAsync(user2);
             var responseContent = await response.Content.ReadAsStringAsync();
 
-            // Assert
+            // Assert: should return UnprocessableEntity with email taken error
             response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
             responseContent.Should().NotBeNullOrEmpty();
 
@@ -58,24 +76,26 @@ namespace FinalProject.Tests.UserTests
             errors.Should().NotBeEmpty();
             errors.Should().Contain(e => e.field == "email" && e.message.Contains("has already been taken"));
 
+            // Cleanup
             await UserService.DeleteUserAsync(createdUser1!.Id);
         }
+
+        // Invalid data scenarios
 
         [Test]
         public async Task CreateUser_WithoutEmail_ShouldReturnUnprocessableEntity()
         {
-            // Arrange
+            // Arrange: generate user with null email
             var user = TestDataGenerator.GenerateUser();
             user.Email = null;
 
-            // Act
+            // Act: try to create user
             var response = await UserService.CreateUserAsync(user);
             var responseContent = await response.Content.ReadAsStringAsync();
 
-            // Assert
+            // Assert: UnprocessableEntity with email error
             response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
             responseContent.Should().NotBeNullOrEmpty();
-
             var errors = JsonSerializer.Deserialize<List<ErrorResponse>>(responseContent);
             errors.Should().Contain(e => e.field == "email");
         }
@@ -83,7 +103,7 @@ namespace FinalProject.Tests.UserTests
         [Test]
         public async Task CreateUser_WithoutName_ShouldReturnUnprocessableEntity()
         {
-            // Arrange
+            // Arrange: user without name
             var user = TestDataGenerator.GenerateUser();
             user.Name = null;
 
@@ -94,7 +114,6 @@ namespace FinalProject.Tests.UserTests
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
             responseContent.Should().NotBeNullOrEmpty();
-
             var errors = JsonSerializer.Deserialize<List<ErrorResponse>>(responseContent);
             errors.Should().Contain(e => e.field == "name");
         }
@@ -102,7 +121,7 @@ namespace FinalProject.Tests.UserTests
         [Test]
         public async Task CreateUser_WithInvalidGender_ShouldReturnUnprocessableEntity()
         {
-            // Arrange
+            // Arrange: user with invalid gender value
             var user = TestDataGenerator.GenerateUser();
             user.Gender = "unknown";
 
@@ -119,7 +138,7 @@ namespace FinalProject.Tests.UserTests
         [Test]
         public async Task CreateUser_InvalidData_ShouldReturnUnprocessableEntity()
         {
-            // Arrange
+            // Arrange: user with multiple invalid fields
             var invalidUser = new CreateUserRequest
             {
                 Name = "",
@@ -135,10 +154,77 @@ namespace FinalProject.Tests.UserTests
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
             responseContent.Should().NotBeNullOrEmpty();
-
             var errors = JsonSerializer.Deserialize<List<ErrorResponse>>(responseContent);
             errors.Should().NotBeNull();
             errors.Should().NotBeEmpty();
+        }
+
+        [Test]
+        public async Task CreateUser_WithTooLongName_ShouldReturnUnprocessableEntity()
+        {
+            // Arrange: name exceeding max length (e.g. 256 chars)
+            var user = TestDataGenerator.GenerateUser();
+            user.Name = new string('A', 256);
+
+            // Act
+            var response = await UserService.CreateUserAsync(user);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            // Assert
+            response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+            var errors = JsonSerializer.Deserialize<List<ErrorResponse>>(responseContent);
+            errors.Should().Contain(e => e.field == "name");
+        }
+
+        [Test]
+        public async Task CreateUser_WithWhitespaceName_ShouldReturnUnprocessableEntity()
+        {
+            // Arrange: name consisting only of whitespace
+            var user = TestDataGenerator.GenerateUser();
+            user.Name = "    ";
+
+            // Act
+            var response = await UserService.CreateUserAsync(user);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            // Assert
+            response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+            var errors = JsonSerializer.Deserialize<List<ErrorResponse>>(responseContent);
+            errors.Should().Contain(e => e.field == "name");
+        }
+
+        [Test]
+        public async Task CreateUser_WithInvalidEmailFormat_ShouldReturnUnprocessableEntity()
+        {
+            // Arrange: invalid email format (missing '@')
+            var user = TestDataGenerator.GenerateUser();
+            user.Email = "no-at-symbol.com";
+
+            // Act
+            var response = await UserService.CreateUserAsync(user);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            // Assert
+            response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+            var errors = JsonSerializer.Deserialize<List<ErrorResponse>>(responseContent);
+            errors.Should().Contain(e => e.field == "email");
+        }
+
+        [Test]
+        public async Task CreateUser_WithInvalidStatus_ShouldReturnUnprocessableEntity()
+        {
+            // Arrange: invalid status value
+            var user = TestDataGenerator.GenerateUser();
+            user.Status = "unknown-status";
+
+            // Act
+            var response = await UserService.CreateUserAsync(user);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            // Assert
+            response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+            var errors = JsonSerializer.Deserialize<List<ErrorResponse>>(responseContent);
+            errors.Should().Contain(e => e.field == "status");
         }
     }
 }
